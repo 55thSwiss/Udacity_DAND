@@ -1,0 +1,1 @@
+This was a test more or less at the end of the term 1 DAND program for Udacity. A/B test are not useless but I found this to be kind of pointless, doing creative projects with real life data was a much better exercise.
