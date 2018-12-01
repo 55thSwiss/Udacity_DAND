@@ -1,3 +1,0 @@
-One of the most enjoyable parts about watching sports is watching a team win. This usually has to do with the fact that winning teams score more, but in this analysis I'm going to take a look at what makes a winning team, statistically, different than a losing team beyond just the goals.
-
-We're going to manipulate the data into two basic categories, data about individual teams and data about how these teams did against one another, then we can compare what matter most for the winning teams.
