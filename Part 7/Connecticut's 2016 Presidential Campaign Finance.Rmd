@@ -1,0 +1,245 @@
+---
+title: "Connecticut's 2016 Presidential Campaign Finance"
+Author: '55thSwiss'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(ggplot2)
+library(scales)
+library(plyr)
+library(dplyr)
+library(plotly)
+#install.packages("plotly")
+
+```
+
+## Introduction
+In this exploratory analysis we're going to look at Connecticut's contributions to the 2016 Presidential elections and see what the data provided by the [Federal Election Comission](https://classic.fec.gov/disclosurep/pnational.do) might tell us about Connecticut's population. There are no information goals in mind at the moment for this dataset, it hasn't even been looked at, to facilitate a "stream of consciousness" approach as requested.
+
+Outputting a sample of some of the information in the dataset:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# load data
+ctData <- read.csv('P00000001-CT.csv',header=TRUE, sep=",", stringsAsFactors = F,row.names = NULL)
+# column headers imported strange, this fixed it
+colnames(ctData) <- c(colnames(ctData)[-1],NULL)
+# variable for math in next part
+pop_size <- dim(ctData)[1]
+# show some sample data
+sample_n(ctData, 5)
+```
+
+Unique volumn values:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# counts unique values in each column
+sapply(ctData, function(x) length(unique(x)))
+```
+
+## Basic Information and Distrobution plots
+
+This dataset contains 107,560 observations, or rows of data, with 19 variables. At least half the dataset is fairly useless though, with columns of data like 'candidate id' - we have their names as unique identifiers, and the list goes on - a binary 'memo to charitable donations' column, form type, file number, receipt description, and transaction ID. None of these columns can really add much to the finacial aspect of this dataset and they will be dropped.
+
+```{r FEC data, echo=FALSE, message=FALSE, warning=FALSE}
+# dropping rows
+ctData = subset(ctData, select = -c(cmte_id, cand_id, contbr_st, receipt_desc, memo_cd, memo_text, form_tp, file_num, tran_id))
+```
+
+Let's take a look at the the most basic aspect of the dataset and why we're here: how much money was given to each candidate!
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# summing the candidate names through all the observations
+counts <- table(ctData$cand_nm)
+# formatting margins
+par(mar=c(13, 5, 2, 2))
+# shows a simple barplot with the counts of candidate contributions
+barplot(counts, main="Contributions to Candidates", las=2, ylim=range(pretty(c(0, counts))))
+```
+
+Clearly Clinton, Sanders, and Trump had the majority of the contributions in the state. We're going to focus further explorations on just the three of them. I'm not a very partisan individual, but I was still surprised to see Sanders exceeded Trump in the elections, not because I didn't think Connecticut was a left leaning state, I knew it was, but because no one talks about Bernie here; where as I know a vast number of people who support Trump. This will be a comparative note going forward.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# capture only Trump, Clinton, and Sanders
+new_ctData = subset(ctData, cand_nm == 'Trump, Donald J.' | cand_nm == 'Sanders, Bernard' | cand_nm == 'Clinton, Hillary Rodham')
+```
+Number of votes after reduction:
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# how many observations are left now
+new_pop_size <- dim(new_ctData)[1]
+new_pop_size
+```
+Perceentage of voters this represents in Connecticut:
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# percentage left from original dataframe
+percentOfVoters <- ((new_pop_size / pop_size)*100)
+percentOfVoters
+```
+
+Reducing the dataset down to these three candidates will not affect the outcome of any further analysis. Let's look at the same graph as above with only these candidates:
+ 
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# repeating the count but this time to graph only the three candidates
+counts <- table(new_ctData$cand_nm)
+par(mar=c(5, 5, 2, 2))
+barplot(counts, main="Contributions to Candidates", col = c('#0000FF', '#00FF00', '#FF0000'), ylim=range(pretty(c(0, counts))))
+
+# changing the candidate names to someting more familiar, and it fits on the graphs better
+new_ctData$cand_nm[new_ctData$cand_nm=='Clinton, Hillary Rodham'] <- 'Clinton'
+new_ctData$cand_nm[new_ctData$cand_nm=='Sanders, Bernard'] <- 'Bernie'
+new_ctData$cand_nm[new_ctData$cand_nm=='Trump, Donald J.'] <- 'Trump'
+```
+
+## When, Where, and Who Are Citizens Contributing?
+
+I still find it interesting that Bernie received more contributions in CT than Trump, lets take a look at when these candidates received their contributions to get a better idea.
+
+### When
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# creates a scatter plot based on individual contributions and the date of contribution, colored by candidate
+ggplot(new_ctData, aes(contb_receipt_dt, contb_receipt_amt, colour = factor(cand_nm))) + geom_point() + ylim(0, 3000) + scale_colour_manual(name="",values = c('Clinton'='#0000FF', 'Bernie'='#00FF00', 'Trump'='#FF0000'))
+```
+
+It looks like all three received low level support the majority of the election period, although we can see Bernie did have a spike of low and high level support the second half of the election period, including all the highest contributions made to any candidate. Maybe his people thought he could make a push? How could CT residents be so naive? 
+
+Bernie wound up losing to Hillary but the state still loves him I guess. So [respectful](https://www.nhregister.com/connecticut/article/In-Connecticut-Hillary-Clinton-beats-Bernie-11330502.php#photo-13317210) when they want to be.
+
+Bernie definitely has the most sporadic investment coming in, with Trump close behind, altough he did have some strong low to mid level support that was pretty regular. Clinton on the other hand had money coming all the time, and lots of it.
+
+### Where
+
+Next I'd like to see who in the state was contributing to each candidate by location, we'll break down total number of contributions for each candidate by county.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# bringing in some more data to capture county
+ctTownList <- read.csv('Connecticut_Towns.csv',header=TRUE, sep=",", stringsAsFactors = F)
+# renaming the columns so I can interact with them
+colnames(ctTownList) <- c("contbr_city","County", 'Year_Established', 'Parent_Town', 'History')
+# dropping what I don't want
+ctTownList = subset(ctTownList, select = -c(Year_Established, Parent_Town, History) )
+
+# changing values to uppercase for merging
+ctTownList = data.frame(lapply(ctTownList, function(v) {
+  if (is.character(v)) return(toupper(v))
+  else return(v)
+}))
+# merge the two df's
+ctCounty <- merge(new_ctData,ctTownList,by="contbr_city", ignore_case = TRUE)
+counts <- table(new_ctData$cand_nm)
+
+# create a series of pie graphs showing the frequency of contributions to each candidate by county
+par(mfrow=c(2,4) ) # 2 row and 4 columns for plots
+pie( table(ctCounty$cand_nm[ctCounty$County=='NEW HAVEN']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='New Haven')
+pie( table(ctCounty$cand_nm[ctCounty$County=='TOLLAND']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='Tolland')
+pie( table(ctCounty$cand_nm[ctCounty$County=='FAIRFIELD']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='Fairfield')
+pie( table(ctCounty$cand_nm[ctCounty$County=='HARTFORD']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='Hartford')
+pie( table(ctCounty$cand_nm[ctCounty$County=='LITCHFIELD']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='Litchfield')
+pie( table(ctCounty$cand_nm[ctCounty$County=='MIDDLESEX']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='Middlesex')
+pie( table(ctCounty$cand_nm[ctCounty$County=='NEW LONDON']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='New London')
+mtext(side = 3, text="Who's Popular by County", line = 17, adj = 1.5)
+pie(table(ctCounty$cand_nm[ctCounty$County=='WINDHAM']), col = c('#00FF00', '#0000FF', '#FF0000'), xlab='Windham')
+
+```
+
+This graph represents the dollar amount contributed to each candaidate by county.
+
+The only clearly overwhelming favorability in a county is Fairfield, which clearly supports Clinton. The only counties where Clinton didn't have at least half the contributions was New London and Windham. I don't recognize them as the socialists they clearly are but at least they gave Bernie a little bumper sticker love, seeing as how they don't actually have any money there to conribute.
+
+Fairfield County is the only one that's close to the 3/4 mark for contributions to a single candidate. I'm guessing they also contributed the most money (overall, amonst any county), seeing as how it's the most affluent area of the state, lets take a look at that data next.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Similar to the last graph except instead of showing candidates its showing during what election period people were contributing 
+par(mar=c(8, 5, 5, 1), mfrow=c(2,4))
+barplot( table(ctCounty$election_tp[ctCounty$County=='NEW HAVEN']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab='New Haven', line = 4)
+barplot( table(ctCounty$election_tp[ctCounty$County=='TOLLAND']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab='Tolland', line = 4)
+barplot( table(ctCounty$election_tp[ctCounty$County=='FAIRFIELD']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab='Fairfield', line = 4)
+barplot( table(ctCounty$election_tp[ctCounty$County=='HARTFORD']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab='Hartford', line = 4)
+barplot( table(ctCounty$election_tp[ctCounty$County=='LITCHFIELD']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab='Litchfield', line = 4)
+barplot( table(ctCounty$election_tp[ctCounty$County=='MIDDLESEX']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab='Middlesex', line = 4)
+barplot( table(ctCounty$election_tp[ctCounty$County=='NEW LONDON']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab='New London', line = 4)
+barplot( table(ctCounty$election_tp[ctCounty$County=='WINDHAM']), col = c('#0000FF', '#FF0000'), las=2)
+title(xlab = 'Windham', line = 4)
+mtext(side = 3, text="Contributions per Election Period", line = 20, adj = 2.5)
+```
+
+The bar chart above shows the frequency, or how many individual instances, there were of contributions to each candidate by county in Connecticut. 
+
+We can see that the frequency of donations to Clinton and Bernie was far greater than that of Trump in every area of the state. This of course doesn't speak to the total dollar amounts, but it may be an indication to the populations overall support level for each candidate. We would have to assume that if the donation frequency is higher either that candidate has more supports in the state or the contributors are more passionate.
+
+### What
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# this table shows the total dollar amount contributed to each candidate by county
+require(data.table) 
+countyDollars <- data.table(ctCounty) 
+countyDollars <- countyDollars[ , .(Totalcount = sum(contb_receipt_amt)), by = .(cand_nm, County)]
+options(scipen=10000)
+ggplot(countyDollars, aes(County, Totalcount, fill = factor(cand_nm))) + 
+  geom_bar(stat="identity", position = "dodge") + theme(axis.text.x = element_text(angle = 90, hjust = 1))   + scale_colour_manual(name="",values = c('Clinton'='#0000FF', 'Bernie'='#00FF00', 'Trump'='#FF0000'))
+```
+
+First off, I apologize for the color difference in the key for this graph, I used 'ggplot' above and was above to sort the colors how I wanted but it will not response this time no matter what I've tried. I guess for this one it works, green is for money and Clinton's swimming in it!
+
+This ridiculous difference in scale may look surprising to those outside New England but, with out digging especially deep, it's not at hard to believe being a CT native. Fairfield County is one of the richest counties in the country, not just CT or New England. We're talking "the top 2%" kind of money here. Honestly I didn't think it would be quite that much more, but I'm really not surprised. 
+
+Some other notes about the graph, not surprising New Haven County would be second. A good chunk of the state's population lives here, and speaking from experience (I live in the city of New Haven), it's an actively political area to say the least. People are vary passionate about voting in the city of New Haven, and it's very liberal. 
+
+Seeing some large drop off in money contribution in counties like New London, Tolland, and Windham are not surprising - no one lives there!
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# this graph captures the individual that contributes the most money for each candidate
+require(data.table) 
+indContributions <- data.table(ctCounty) 
+indContributions <- indContributions[, .(Totalcount = sum(contb_receipt_amt)), by = .(contbr_nm, cand_nm)]
+clintonContributors <- subset(indContributions, cand_nm == 'Clinton')
+clintonContributors <- clintonContributors[which.max(clintonContributors$Totalcount)]
+bernieContributors <- subset(indContributions, cand_nm == 'Bernie')
+bernieContributors <- bernieContributors[which.max(bernieContributors$Totalcount)]
+trumpContributors <- subset(indContributions, cand_nm == 'Trump')
+trumpContributors <- trumpContributors[which.max(trumpContributors$Totalcount)]
+topContributors <- merge( merge( clintonContributors, trumpContributors, all = TRUE ), bernieContributors, all = TRUE )
+p <- plot_ly(topContributors, x = ~contbr_nm, y = ~Totalcount, type = 'bar', name = ~contbr_nm, color = ~cand_nm) %>%
+
+  layout(yaxis = list(title = 'Amount'), xaxis = list(title = 'Contributor Name'), barmode = 'group')
+p
+```
+
+Trump (Helen Krieble) and Clinton (Wiener Malcom) had higher total contributions from a single individual than Bernie (Belinda Varcock) did, but if we compare this to the scatter plot above, we'll see that Bernie had many $3,000 contributions, the same level as Belinda Varcock. This would lead you to believe that there should be several other people who contributed the three thousand dollar amount to Bernie, where has Trump and Clinton were received most of their benefit from a single contributor.
+
+## Summary
+
+For me the most telling plot was the second to last, because it contains a lot of information about contributions made during the 2016 elections like the total dollar amount given to each candidate and from where the money is coming from - showing the supporters by location. Below is an alternate version of that graph, where I've added the election period. It's interesting to note here that after the primary elections the majority of financial support from the state went to Clinton. Bernie was out and Trump only received a fraction of what Clinton got, keeping in line with Connecticut being a liberal state overall the last several years.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# shows the total dollar amount contributed to each candidate by county and during which election period
+require(data.table) 
+countyDollars <- data.table(ctCounty) 
+countyDollars <- countyDollars[ , .(Totalcount = sum(contb_receipt_amt)), by = .(cand_nm, County, election_tp)]
+options(scipen=10000)
+countyDollars <- subset(countyDollars, election_tp == "G2016" | election_tp == 'P2016')
+p <- ggplot(countyDollars, aes(x = County, y = Totalcount, fill = election_tp)) + 
+  geom_bar(stat = 'identity', position = 'stack') + theme(axis.text.x = element_text(angle = 90, hjust = 0)) + facet_grid(~cand_nm)
+p + labs( x = "County", y = 'Total Dollars', colour = 'Period', title = 'Contributes per Candidate During Each Election')
+```
+
+## Reflections
+
+This dataset was relatively unsurprising. The 2016 elections were highly broadcast and most people living in more urban environments at least had an idea of what was going on. It was interesting to see from the data, and from a financial perspective, the trend of the money flow with Bernie and Clinton being the fore-runners about halfway through, but then seeing Bernie fade out and the continued support of Clinton through until the general elections. 
+
+Some challenges working with this dataset was I didn't find it very interesting, and normally this type of information is to me. I found there not to be a lot of relevent data that you could really explore and manipulate. I did do some quick Google searches to see if I could find more data to expand this set, but there wasn't really much specifically for CT that would have been useful. Grabbing another table that contained the counties was helpful though, it's much easier to look at 8 breakdowns to separate the area rather than the 300+ towns to try and get a geographical perspective. I also found working with R to be cumbersome. Admittedly this was my first time using it, but I find the language to not be as intuative as Python and the support online (from sites like stackoverflow etc) to not be nearly as explanatory as for Python. I'm glad this is the only project requiring the use of R.
+
+
